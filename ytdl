@@ -1,0 +1,125 @@
+#!/usr/bin/env ruby
+#
+require "cgi"
+require "json"
+require "net/http"
+require "optparse"
+
+require "filesize"
+require "progressbar"
+require "rainbow"
+
+USAGE = "Usage: ytdl [options] https://www.youtube.com/watch?v=<id>".freeze
+VERSION = "0.1.0".freeze
+
+def parse_options
+  options = {}
+  OptionParser.new do |parser|
+    parser.banner = USAGE
+    parser.separator ""
+    parser.separator "Options:"
+    parser.on("-f", "--format <code>", "Video format code") do |arg|
+      options[:format] = arg
+    end
+    parser.on("-F", "--list-formats", "List video format codes") do |arg|
+      options[:formats] = arg
+    end
+    parser.on("-v", "--verbose", "Run verbosely") do |arg|
+      options[:verbose] = arg
+    end
+    parser.on("-V", "--version", "Show version") do
+      puts "ytdl v#{VERSION}"
+      exit
+    end
+    parser.on("-h", "--help", "Show help") do
+      puts parser
+      exit
+    end
+  end.parse!
+  options[:formats] = true if options[:format].nil?
+  options
+end
+
+def parse_id(url)
+  case url.host
+  when "www.youtube.com"
+    query = CGI.parse(url.query)
+    query["v"].first
+  when "youtu.be"
+    url.path[1..-1]
+  end
+end
+
+def get_video_info(id)
+  res = Net::HTTP.get(URI.parse("https://www.youtube.com/get_video_info?video_id=#{id}"))
+  vars = CGI.parse(res)
+  return if vars["status"].first == "fail"
+
+  JSON.parse(vars["player_response"].first)
+end
+
+def download(link, dest, verbose: false)
+  puts format("%s %s", Rainbow("Source:").yellow, link) if verbose
+  puts format("%s %s", Rainbow("Destination:").yellow, dest)
+  uri = URI.parse(link)
+  Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+    req = Net::HTTP::Get.new(uri)
+    http.request(req) do |res|
+      len = res["content-length"].to_i
+      return false if len == 0
+
+      str = Filesize.from("#{len} B").pretty
+      fmt = "%t [%B] %p%% of #{str}%e"
+      bar = ProgressBar.create(title: Rainbow("Downloading:").yellow, total: len, format: fmt, progress_mark: Rainbow("#").green, remainder_mark: "-")
+      begin
+        File.open(dest, "w") do |f|
+          res.read_body do |chunk|
+            f.write(chunk)
+            bar.progress += chunk.length
+          end
+        end
+      rescue SystemExit, Interrupt
+        exit
+      end
+      bar.finish
+    end
+  end
+  true
+end
+
+options = parse_options
+
+url = URI.parse(ARGV.shift || "")
+id = parse_id(url)
+if id.nil?
+  puts USAGE
+  exit
+end
+
+info = get_video_info(id)
+if info.nil?
+  puts format("%s could not get video info", Rainbow("Error:").bold.red)
+  exit
+end
+
+title = info["videoDetails"]["title"]
+
+puts "Video format codes:" if options[:formats]
+found = false
+info["streamingData"]["formats"].each do |f|
+  link = f["url"]
+  code = f["qualityLabel"]
+  type = f["mimeType"].match(/video\/(.+);/).captures.first
+  base = (title.split << id).join("_")
+  dest = [base, type].join(".")
+  if options[:formats]
+    puts format("    -f %s", code)
+    found = true
+  elsif options[:format] == code
+    unless download(link, dest, **options.slice(:verbose))
+      puts format("%s could not download the video", Rainbow("Error:").bold.red)
+    end
+    found = true
+  end
+end
+puts format("%s could not find requested video format code", Rainbow("Error:").bold.red) unless found
