@@ -1,9 +1,12 @@
 # ytdl
 
-## Description (2020-10-23)
+YouTube Video Downloader
 
-Yesterday [YouTube-dl][1] has received a [DMCA takedown from RIAA][2] and got
-taken down from GitHub. Well, that sucks.
+
+## Genesis (2020-10-23)
+
+Yesterday [YouTube-dl][1] received a [DMCA takedown from RIAA][2] and its
+git repositories were disabled on GitHub. Well, that sucks.
 
 It's such a great tool when you have a limited internet access to download
 videos in the format of your choice instead of streaming them. But it did
@@ -17,7 +20,7 @@ and focus on videos from YouTube without DRM.
 [2]: https://github.com/github/dmca/blob/master/2020/10/2020-10-23-RIAA.md
 
 
-## Install
+## Installation
 
     > git clone https://github.com/vinc/ytdl
     > cd ytdl
